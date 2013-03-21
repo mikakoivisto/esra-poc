@@ -16,11 +16,22 @@ package com.liferay.tools.esra.shell;
 
 import java.io.Console;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.Options;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.tools.ant.launch.Launcher;
+import org.apache.tools.ant.taskdefs.Expand;
 
 /**
  * @author Mika Koivisto
@@ -40,12 +51,19 @@ public class EsraShell {
 			_homeDir.mkdirs();
 		}
 
+		_downloadsDir = new File(_homeDir, ".downloads");
+
+		if (!_downloadsDir.exists()) {
+			_downloadsDir.mkdirs();
+		}
+
 		_pluginsSdkDir = new File(_homeDir, ".sdk");
 
 		if (!_pluginsSdkDir.exists()) {
 			_pluginsSdkDir.mkdir();
 		}
 
+		_httpClient = new DefaultHttpClient();
 	}
 
 	public void process(String[] args) throws Exception {
@@ -58,12 +76,57 @@ public class EsraShell {
 		if (command.equals("login")) {
 			login(args);
 		}
+		else if (command.equals("update")) {
+			update();
+		}
+		else if (command.equals("install-sdk")) {
+			installSdk();
+		}
+		else {
+			runAnt(args);
+		}
 	}
 
 	public static void main(String[] args) throws Exception {
 		EsraShell esraShell = new EsraShell();
 
 		esraShell.process(args);
+	}
+
+	protected void installSdk() {
+		String sdkUrl = "http://downloads.sourceforge.net/project/lportal/Liferay%20Portal/6.1.1%20GA2/liferay-plugins-sdk-6.1.1-ce-ga2-20121004092655026.zip?use_mirror=iweb";
+
+		HttpGet httpGet = new HttpGet(sdkUrl);
+
+		try {
+			//System.out.println("Making request... ");
+
+			HttpResponse httpResponse = _httpClient.execute(httpGet);
+
+			HttpEntity httpEntity = httpResponse.getEntity();
+
+			//System.out.println("Get content ...");
+			InputStream is = httpEntity.getContent();
+
+			OutputStream os = new FileOutputStream(new File(_downloadsDir, "plugins-sdk.zip"));
+
+			//System.out.println("Downloading " + httpEntity.getContentLength() + " bytes");
+
+			IOUtils.copy(is, os);
+
+			Expand expand = new Expand();
+
+			expand.setSrc(new File(_downloadsDir, "plugins-sdk.zip"));
+			expand.setDest(_pluginsSdkDir);
+
+			expand.execute();
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+		finally {
+			httpGet.releaseConnection();
+		}
 	}
 
 	protected void login(String[] args) throws Exception {
@@ -103,6 +166,28 @@ public class EsraShell {
 				password + "'");
 	}
 
+	protected void runAnt(String[] args) {
+		Launcher.main(args);
+	}
+
+	protected void update() {
+		File downloadsDir = new File(_homeDir, ".downloads");
+
+		if (!downloadsDir.exists()) {
+			downloadsDir.mkdirs();
+		}
+
+		// Check if update exists
+
+		// Download file
+		System.out.println("Downloading update...");
+
+		// Extract upgrade
+		System.out.println("Extracting update...");
+
+		//System.out.println("Run " + new File(_homeDir, "upgrade/upgrade.sh").getAbsolutePath() +" to complete upgrade.");
+	}
+
 	protected void usage() {
 		System.out.println("lfr <commond> [options]");
 		System.out.println("login [-username <username>] [-passwd <password>]");
@@ -110,7 +195,9 @@ public class EsraShell {
 		System.exit(1);
 	}
 
+	private File _downloadsDir;
 	private File _homeDir;
+	private HttpClient _httpClient;
 	private CommandLineParser _parser = new GnuParser();
 	private File _pluginsSdkDir;
 
